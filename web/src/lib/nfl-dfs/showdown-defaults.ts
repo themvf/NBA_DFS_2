@@ -29,6 +29,22 @@ export const LOW_EXPOSURE_NOTICE_AT = 0.6;
 
 type FormatModeShape = { format: 'classic' | 'showdown'; mode: 'cash' | 'gpp'; buildShape?: string };
 
+/** The form's starting Min unique everywhere else. */
+export const DEFAULT_MIN_UNIQUE = 2;
+/**
+ * The starting Min unique for a Showdown GPP build under the Winners shape
+ * (2026-11-15). Requiring two different players ran builds out of lineups (69
+ * built of 150 asked on 16 replayed slates; 116 at one), at the same return
+ * per $1 (0.36 both ways). 89% of heavy entrants' lineups sit one player from
+ * another of their own. A value the user typed, or one a saved draft or run
+ * carries, is never changed.
+ */
+export const SHOWDOWN_WINNERS_MIN_UNIQUE = 1;
+/** The Min unique a form starts from when nobody has chosen one. */
+export function defaultMinUnique(s: FormatModeShape): number {
+  return s.format === 'showdown' && s.mode === 'gpp' && s.buildShape === 'winners' ? SHOWDOWN_WINNERS_MIN_UNIQUE : DEFAULT_MIN_UNIQUE;
+}
+
 /** The Max exposure a form starts from when nobody has chosen one. */
 export function defaultMaxExposure(s: FormatModeShape): number {
   return s.format === 'showdown' && s.mode === 'gpp' && s.buildShape === 'winners' ? SHOWDOWN_WINNERS_MAX_EXPOSURE : DEFAULT_MAX_EXPOSURE;

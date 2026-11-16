@@ -462,7 +462,7 @@ console.log("Winners shape v13: simulated captain ranges apply when the user set
 
 // --- v14: Showdown salary floor, lineup ownership floor, five simulated captains ---
 {
-  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v16", "v15 added the lineup rules, v16 the Classic thin-stack cap; the v14 rules below are unchanged");
+  assert.equal(WINNERS_SHAPE_VERSION, "nfl-winners-shape-v17", "v15 added the lineup rules, v16 the Classic thin-stack cap; the v14 rules below are unchanged");
   const limits = (over: Partial<NflOptimizerSettings>, options?: { poolRules?: boolean }) => winnersShapeLimits(settings(over), options);
   assert.equal(limits({ format: "showdown" }).minSalary, 49_500, "Showdown spends at least $49,500");
   assert.equal(limits({ format: "classic" }).minSalary, 48_100, "Classic keeps its floor");
@@ -559,7 +559,7 @@ console.log("Winners shape v14 (showdown): $49,500 floor, estimated lineup owner
   assert.equal(sdShape.minRawProjection, 2);
   assert.equal(sdShape.lowProjectionMaxExposure, 0.1);
   assert.equal(sdShape.showdownRbPairMinReceptions, 2.5);
-  assert.equal(sdShape.maxDstVsOffenseShare, 0.05);
+  assert.equal(sdShape.maxDstVsOffenseShare, 1, "v17: the Showdown DST cap starts off");
   assert.equal(sdShape.questionableMaxExposure, 0.25);
   assert.equal(sdShape.doubtfulMaxExposure, 0.1);
   const clShape = applyWinnersShape(settings({ puntPolicy: { ...DEFAULT_NFL_PUNT_POLICY } }), []).settings;
