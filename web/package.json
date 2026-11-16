@@ -187,6 +187,7 @@
     "test:nfl-gpp-scoring": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-gpp-scoring.ts",
     "test:nfl-showdown-defaults": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-showdown-defaults.ts",
     "test:nfl-rolling-view": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-rolling-view.ts",
+    "test:nfl-projection-roles": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-projection-roles.ts",
     "test:charts": "node --import tsx ./scripts/test-charts.ts",
     "test:nfl-joint-selection": "node -r ./scripts/server-only-stub.cjs --import tsx ./scripts/test-nfl-joint-selection.ts",
     "test:nfl-pool-capture-blobs": "tsx ./scripts/test-nfl-pool-capture-blobs.ts",

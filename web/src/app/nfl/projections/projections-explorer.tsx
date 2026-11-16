@@ -104,6 +104,9 @@ export default function ProjectionsExplorer({ board, initial, week }: {
           <Toggle checked={state.includeEstimates} onChange={includeEstimates => update({ includeEstimates })}>
             Include {hidden.estimates} position estimates
           </Toggle>
+          <Toggle checked={state.includeBackups} onChange={includeBackups => update({ includeBackups })}>
+            Include {hidden.backups} backups
+          </Toggle>
           <Toggle checked={state.includeOut} onChange={includeOut => update({ includeOut })}>
             Include {hidden.out} ruled out
           </Toggle>

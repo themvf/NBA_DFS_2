@@ -1,6 +1,6 @@
 import {
   boomThreshold, formatKickoff, formatNumber, formatPercent, formatSalary, formatSigned, formatValue,
-  isPositionEstimate, isOut, pointsPerThousand, relevantImplied,
+  isBackup, isPositionEstimate, isOut, pointsPerThousand, relevantImplied,
   statLine, type RollingPlayer, type TeamEnvironment,
 } from "@/lib/nfl-dfs/rolling-projection-view";
 import RangeBar, { positionStyle } from "./range-bar";
@@ -14,9 +14,20 @@ export function PositionChip({ position }: { position: string }) {
   );
 }
 
+/** Why the player is out or a backup, for the line under his name. */
+export const roleNote = (player: RollingPlayer) =>
+  player.unavailableReason ?? (isBackup(player) ? player.backupReason : null);
+
 export function StatusBadges({ player }: { player: RollingPlayer }) {
   return <>
-    {isOut(player) && <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-semibold text-destructive">Out</span>}
+    {isOut(player) && <span title={player.unavailableReason ?? undefined}
+      className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-semibold text-destructive">Out</span>}
+    {isBackup(player) && (
+      <span title={`${player.backupReason}. The projection assumes he plays, which the depth chart says he will not.`}
+        className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+        Backup
+      </span>
+    )}
     {isPositionEstimate(player) && (
       <span title="Too few NFL games for a projection of his own. This is the position average, which has run several points high for these players."
         className="rounded-md border border-dashed border-muted-foreground/50 px-1.5 py-0.5 text-[11px] text-muted-foreground">
@@ -65,8 +76,9 @@ export default function ProjectionCard({ player, environment, max, rank }: {
   const implied = relevantImplied(player.position, environment);
   const threshold = boomThreshold(player.position);
   const stats = statLine(player);
+  const note = roleNote(player);
   return (
-    <article className={`flex flex-col rounded-xl border bg-card p-4 text-card-foreground shadow-xs ${estimate ? "border-dashed" : ""} ${isOut(player) ? "opacity-60" : ""}`}>
+    <article className={`flex flex-col rounded-xl border bg-card p-4 text-card-foreground shadow-xs ${estimate ? "border-dashed" : ""} ${isOut(player) || isBackup(player) ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -75,7 +87,10 @@ export default function ProjectionCard({ player, environment, max, rank }: {
             <StatusBadges player={player} />
           </div>
           <h3 className="mt-1 truncate text-base font-semibold" title={player.name}>{player.name}</h3>
-          <p className="text-xs text-muted-foreground">{player.team} vs {player.opponent} · {formatKickoff(player.kickoff)}</p>
+          <p className="text-xs text-muted-foreground">
+            {player.team} vs {player.opponent}{player.depth ? ` · ${player.depth}` : ""} · {formatKickoff(player.kickoff)}
+          </p>
+          {note && <p className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">{note}</p>}
         </div>
         <div className="shrink-0 text-right">
           <div className="text-2xl font-bold tabular-nums leading-none">{formatNumber(player.projected)}</div>

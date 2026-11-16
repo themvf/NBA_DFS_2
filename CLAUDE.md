@@ -8047,6 +8047,29 @@ Stick 14.0 as TB's QB in week 3). nflverse's weekly roster does know:
   finished below P10. The rest of the gap to 10% is the played-tail width and
   Q players named in `docs/nfl-dfs-rb-floor-participation-study.md`.
 
+## NFL projections page — backups hidden (`nfl-off-depth-chart-v1`, 2026-11-15)
+
+`/nfl/projections` shows the scheduled run's raw numbers, so a backup was
+projected from his past games as if he would play (Joe Flacco 11.0 behind
+Burrow). The page now reads current roster evidence
+(`getNflRosterEvidence`) and applies the optimizer's rules through
+`resolveProjectionRoles` (`web/src/lib/nfl-dfs/projection-roles.ts`): listed
+QB2+, an unranked QB behind a listed QB1, a kicker below K1, the practice
+squad, plus two page rules in `availability.ts`: an RB/WR/TE whose matched
+Sleeper capture has no depth rank (`offDepthChartReason`) and a player whose
+capture names no team (`noTeamReason`). Backups are a hidden group with their
+own toggle; an injury or roster status newer than the run marks a player out.
+Measured on the 2026 week 2-9 Classic slate report cards against the archived
+Sleeper capture at or before each kickoff (missing stat line = 0): QB2
+projected 7.3, scored 0.4 (n=158); unranked RB/WR/TE projected ~1.2, scored
+0.0, 1% played (n=812; position estimates 6.1 to 0.0, n=78); no team, 0 of 69
+played; every listed rank played (RB3 51%, WR5+ 31%), so a deep rank is not a
+block. This contradicts the "no depth flags 1,131 pool players, 341 played"
+line in the practice-squad section above, which was not measured on archived
+pregame captures; the two have not been reconciled. **The optimizer's pool is
+unchanged:** applying these two rules there is the owner's decision, since
+it changes the ghost factorial house and the pool-rule studies.
+
 ## NFL DFS — Upside against starters (`nfl-upside-display-v1`, 2026-10-30)
 
 Display only; the optimizer, ownership and projections never read it (a test

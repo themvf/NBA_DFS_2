@@ -18,6 +18,7 @@ export type RollingPlayer = {
   ceiling: number | null; boomRate: number | null;
   historyGames: number; salary: number | null; kickoff: string;
   stats: StatMeans;
+  depth: string | null; unavailableReason: string | null; backupReason: string | null;
   teamContext: QbMatchupContext | null;
 };
 export type RollingGame = {
@@ -28,7 +29,7 @@ export type RollingGame = {
 export type RollingProjectionBoard = {
   options: RollingRun[]; run: RollingRun | null; players: RollingPlayer[]; games: RollingGame[];
   matchupAsOf: string | null; omittedPlayers: number; contextError: string | null;
-  salaryAsOf: string | null;
+  salaryAsOf: string | null; rosterAsOf: string | null; rosterError: string | null;
 };
 
 export const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
@@ -45,13 +46,23 @@ export const SORT_LABELS: Record<SortKey, string> = {
 
 export type ExplorerFilters = {
   position: PositionFilter; team: string | null; query: string;
-  includeOut: boolean; includeEstimates: boolean;
+  includeOut: boolean; includeBackups: boolean; includeEstimates: boolean;
 };
 export type ExplorerState = ExplorerFilters & { sort: SortKey; view: "cards" | "table" };
 
 /** Too few games for a projection of his own: the position average, which the slate report cards measured running high. */
 export const isPositionEstimate = (player: RollingPlayer) => player.status === "position_prior";
-export const isOut = (player: RollingPlayer) => player.status === "out";
+export const isOut = (player: RollingPlayer) => player.status === "out" || player.unavailableReason != null;
+export const isBackup = (player: RollingPlayer) => !isOut(player) && player.backupReason != null;
+
+/** The one group a hidden player belongs to, so a single toggle always brings him back. */
+export type HiddenGroup = "out" | "backups" | "estimates";
+export function hiddenGroup(player: RollingPlayer): HiddenGroup | null {
+  if (isOut(player)) return "out";
+  if (isBackup(player)) return "backups";
+  return isPositionEstimate(player) ? "estimates" : null;
+}
+const GROUP_TOGGLE: Record<HiddenGroup, "includeOut" | "includeBackups" | "includeEstimates"> = { out: "includeOut", backups: "includeBackups", estimates: "includeEstimates" };
 
 export function matchesPosition(position: string, filter: PositionFilter): boolean {
   if (filter === "ALL") return true;
@@ -68,8 +79,8 @@ function matchesQuery(player: RollingPlayer, query: string): boolean {
 
 /** Everything except the position filter, so position counts answer "how many would I see". */
 function passesNonPosition(player: RollingPlayer, filters: ExplorerFilters): boolean {
-  return (filters.includeOut || !isOut(player))
-    && (filters.includeEstimates || !isPositionEstimate(player))
+  const group = hiddenGroup(player);
+  return (group == null || filters[GROUP_TOGGLE[group]])
     && (!filters.team || player.team === filters.team)
     && matchesQuery(player, filters.query);
 }
@@ -88,10 +99,14 @@ export function positionCounts(players: readonly RollingPlayer[], filters: Explo
 }
 
 /** Players the default view leaves out, so the toggle can say exactly what it adds. */
-export function hiddenCounts(players: readonly RollingPlayer[], filters: ExplorerFilters): { out: number; estimates: number } {
-  const scoped = players.filter(player => (!filters.team || player.team === filters.team)
-    && matchesPosition(player.position, filters.position) && matchesQuery(player, filters.query));
-  return { out: scoped.filter(isOut).length, estimates: scoped.filter(isPositionEstimate).length };
+export function hiddenCounts(players: readonly RollingPlayer[], filters: ExplorerFilters): Record<HiddenGroup, number> {
+  const counts: Record<HiddenGroup, number> = { out: 0, backups: 0, estimates: 0 };
+  for (const player of players) {
+    const group = hiddenGroup(player);
+    if (group && (!filters.team || player.team === filters.team)
+      && matchesPosition(player.position, filters.position) && matchesQuery(player, filters.query)) counts[group] += 1;
+  }
+  return counts;
 }
 
 const sortValue = (player: RollingPlayer, key: Exclude<SortKey, "name">) => ({
@@ -207,7 +222,7 @@ export function parseFilters(params: Record<string, string | undefined>, teams: 
   const sort = SORT_KEYS.find(key => key === params.sort) ?? "projected";
   return {
     position, team: teams.includes(params.team ?? "") ? params.team! : null, query: params.q ?? "",
-    includeOut: params.out === "1", includeEstimates: params.est === "1", sort,
+    includeOut: params.out === "1", includeBackups: params.bk === "1", includeEstimates: params.est === "1", sort,
     view: params.view === "table" ? "table" : "cards",
   };
 }
@@ -221,6 +236,7 @@ export function filterSearch(state: ExplorerState, week: string | null): string 
   if (state.sort !== "projected") params.set("sort", state.sort);
   if (state.view !== "cards") params.set("view", state.view);
   if (state.includeOut) params.set("out", "1");
+  if (state.includeBackups) params.set("bk", "1");
   if (state.includeEstimates) params.set("est", "1");
   const text = params.toString();
   return text ? `?${text}` : "";
