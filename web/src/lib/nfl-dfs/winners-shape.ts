@@ -307,6 +307,7 @@ export function lineupRuleDefaults(settings: NflOptimizerSettings): Partial<NflO
   return {
     ...(settings.puntPolicy ? { cheapRoleCheckSalary: settings.cheapRoleCheckSalary ?? WINNERS_SHAPE.cheapRoleCheckSalary } : {}),
     minRawProjection: settings.minRawProjection ?? WINNERS_SHAPE.minRawProjection,
+    blockNoRolePlayers: settings.blockNoRolePlayers ?? true,
     lowProjectionMaxExposure: settings.lowProjectionMaxExposure ?? WINNERS_SHAPE.lowProjectionMaxExposure,
     questionableMaxExposure: settings.questionableMaxExposure ?? WINNERS_SHAPE.questionableMaxExposure,
     doubtfulMaxExposure: settings.doubtfulMaxExposure ?? WINNERS_SHAPE.doubtfulMaxExposure,
@@ -320,6 +321,8 @@ export function lineupRuleDefaults(settings: NflOptimizerSettings): Partial<NflO
 /** The build form's v15 lineup-rule controls (shares as fractions; 0 switches a rule off). */
 export type LineupRulesForm = {
   cheapRoleCheckSalary: number;
+  /** Leave out players the depth chart omits or who are on no team (on by default). */
+  blockNoRolePlayers: boolean;
   minRawProjection: number;
   lowProjectionMaxExposure: number;
   showdownRbPairMinReceptions: number;
@@ -332,6 +335,7 @@ export type LineupRulesForm = {
 
 export const DEFAULT_LINEUP_RULES: LineupRulesForm = {
   cheapRoleCheckSalary: WINNERS_SHAPE.cheapRoleCheckSalary,
+  blockNoRolePlayers: true,
   minRawProjection: WINNERS_SHAPE.minRawProjection,
   lowProjectionMaxExposure: WINNERS_SHAPE.lowProjectionMaxExposure,
   showdownRbPairMinReceptions: WINNERS_SHAPE.showdownRbPairMinReceptions,
@@ -355,6 +359,7 @@ export function withLineupRules<T extends NflOptimizerSettings & { lineupRules?:
   return {
     ...settings,
     cheapRoleCheckSalary: rules.cheapRoleCheckSalary,
+    blockNoRolePlayers: rules.blockNoRolePlayers,
     minRawProjection: rules.minRawProjection,
     lowProjectionMaxExposure: rules.lowProjectionMaxExposure > 0 ? rules.lowProjectionMaxExposure : WINNERS_SHAPE.lowProjectionMaxExposure,
     questionableMaxExposure: rules.questionableMaxExposure,
@@ -370,6 +375,7 @@ function lineupRulesNote(s: NflOptimizerSettings): string {
   const pct = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
   const parts = [
     s.cheapRoleCheckSalary ? `cheap players up to ${money(s.cheapRoleCheckSalary)} need a current role, and a role (not price) decides players at $1,000 or less` : "cheap-player role check off",
+    s.blockNoRolePlayers ? "players the depth chart omits or on no team left out unless you allow or lock them" : "no-role rule off",
     s.minRawProjection ? `players projected under ${s.minRawProjection} points left out unless you allow them (then at most ${pct(s.lowProjectionMaxExposure)} of lineups, never captain)` : "projection floor off",
     ...(s.format === "showdown" ? [
       s.showdownRbPairMinReceptions ? `two backs from one team only when one projects ${s.showdownRbPairMinReceptions}+ receptions` : "one-RB-per-team rule off",

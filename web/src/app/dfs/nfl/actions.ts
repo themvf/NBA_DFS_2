@@ -42,7 +42,7 @@ import { resolveDefensiveForecast, type CaptureProfile } from '@/lib/nfl-dfs/def
 import { captureProfileFor, countDefensiveReasons, defensiveBuildNote, defensiveSkipFor } from '@/lib/nfl-dfs/defensive-display';
 import { readServerDefensivePolicy } from '@/lib/nfl-dfs/defensive-policy';
 import { getNflRosterEvidence, getNflInjuryCoverage, type InjuryCoverage } from "@/db/nfl-dfs-availability";
-import { presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, applyTeamKickerContext, identifyTeamKickersByElimination, nflTeamKey, showdownGame, rolePolicyEvidence, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision, type ShowdownGameRow } from "@/lib/nfl-dfs/availability";
+import { noTeamReason, offDepthChartReason, presentPinnedGameAvailability, resolveGameAvailability, applyTeamQbContext, identifyTeamQb1s, applyTeamKickerContext, identifyTeamKickersByElimination, nflTeamKey, showdownGame, rolePolicyEvidence, ROSTER_FRESH_MS, type Availability, type PinnedGameAvailabilityDecision, type ShowdownGameRow } from "@/lib/nfl-dfs/availability";
 import { previewAbsence } from "@/lib/nfl-dfs/absence-preview";
 import type { PlayerContext } from "@/lib/nfl-dfs/player-context";
 import { benchmarkPool, type Competitor, type ImportEvidence, type BenchmarkSnapshot, benchmarkTeam } from '@/lib/nfl-dfs/competitor-benchmark';
@@ -702,6 +702,14 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       {baselineAt:run.asOfAt.toISOString(),reviewRunId:newestRun.runId,reviewAt:newestRun.asOfAt.toISOString(),now:Date.now()});
     for(const player of reviewed)if('latestEligibilityReview' in player && player.ffPlayerId!=null)latestReviews.set(player.ffPlayerId,player);
   }
+  // nfl-off-depth-chart-v1: an RB/WR/TE the matched depth chart omits, or a player Sleeper lists on no team.
+  // Read from the roster capture itself, so a pinned health decision cannot hide it. The optimizer's
+  // no-role rule leaves him out; the slate still shows him.
+  const noRoleReason=(row:typeof rows[number])=>{
+    const evidence=roster.get(row.ffPlayerId ?? -1);
+    return offDepthChartReason(resolveGameAvailability(evidence,row.team,row.position,now,run?.week??null,evidence?.kickoff??null),row.position)
+      ?? noTeamReason(evidence,row.position,now);
+  };
   const currentAvailability=(row:typeof rows[number])=>latestReviews.get(row.ffPlayerId??-1)?.availability??baseAvailability(row);
   const teamQb1s = identifyTeamQb1s(rows.map((row) => ({
     team: row.team,
@@ -833,6 +841,7 @@ async function workspaceSlate(uploadId: string, startingQbs: ConfirmedStartingQb
       isOut: platformOut(row) || Boolean(availability(row).blockedReason),
       ruledOut: injuredOut(row),
       availability: availability(row),
+      noRoleReason: noRoleReason(row),
       latestEligibilityReview:latestReviews.get(row.ffPlayerId??-1)?.latestEligibilityReview,
       // Role evidence for the cheap-player policy, as of the same clock.
       ...rolePolicyEvidence(availability(row), now),
