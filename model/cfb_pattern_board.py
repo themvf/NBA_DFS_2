@@ -117,6 +117,10 @@ def best_retail(trigger: str, game: dict, books: dict | None) -> dict | None:
             k = "ml_home" if home_fav else "ml_away"
             if v.get(k) is not None:
                 cands.append((pw.decimal_odds(v[k]), 0.0, b, None, v[k]))
+        elif trigger == pw.T7:
+            k = "spread_home" if pw.t7_side_is_home(game) else "spread_away"
+            if v.get(k) is not None and v.get(k + "_price") is not None:
+                cands.append((pw.decimal_odds(v[k + "_price"]), v[k], b, v[k], v[k + "_price"]))  # more points better
         elif trigger in ("T3_small_fav_dog_spread",):
             k = "spread_away" if home_fav else "spread_home"
             if v.get(k) is not None and v.get(k + "_price") is not None:
@@ -202,6 +206,7 @@ def build_board(games: list[dict], history: dict[int, list[dict]], frozen: dict[
                     "selection": grade_like["selection"], "consensus_decimal": grade_like["price"],
                     "best_retail": best_retail(trig, gcur, latest["books"] if latest else None),
                     "late_move_at_freeze": late,
+                    **({"to_edge": gcur["to_edge"]} if trig == pw.T7 else {}),
                 }
                 new_rows.append(fz)
                 frozen[key] = fz
@@ -258,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     from model import cfb_pattern_store as store
 
     games = [dict(r) for r in db.execute(_GAMES_SQL, (pw.SEASON, now - timedelta(hours=1), now + timedelta(hours=LOOKAHEAD_HOURS)))]
+    pw.attach_turnover_edge(db, games)
     hist: dict[int, list[dict]] = {}
     if games:
         for r in db.execute(_HIST_SQL, ([int(g["matchup_id"]) for g in games],)):

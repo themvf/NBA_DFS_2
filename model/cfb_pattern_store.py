@@ -112,18 +112,20 @@ def append_run(db, job: str, record: dict, run_at: str | datetime | None = None)
                    (job, run_at, _j(record)))
 
 
-def read_verdict(db) -> dict | None:
+def read_verdict(db, kind: str = "registered_verdict") -> dict | None:
     from model.cfb_pattern_watch import STUDY_VERSION
 
     rows = _payloads(db, """SELECT payload FROM cfb_pattern_runs
-                           WHERE job = 'grade' AND payload->>'kind' = 'registered_verdict'
-                             AND payload->>'study_version' = %s""", (STUDY_VERSION,))
+                           WHERE job = 'grade' AND payload->>'kind' = %s
+                             AND payload->>'study_version' = %s""", (kind, STUDY_VERSION))
     return rows[0] if rows else None
 
 
-def save_verdict(db, record: dict) -> None:
+def save_verdict(db, record: dict, kind: str = "registered_verdict") -> None:
+    if read_verdict(db, kind) is not None:      # one verdict per kind, never rewritten
+        return
     db.execute("""INSERT INTO cfb_pattern_runs (job, payload) VALUES ('grade', %s)
-                  ON CONFLICT DO NOTHING""", (_j(dict(record, kind="registered_verdict")),))
+                  ON CONFLICT DO NOTHING""", (_j(dict(record, kind=kind)),))
 
 
 # ── rendered page ────────────────────────────────────────────────────────────

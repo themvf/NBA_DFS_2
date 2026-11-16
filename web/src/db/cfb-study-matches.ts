@@ -12,7 +12,7 @@ export async function getCfbStudySelections(date: string) {
            m.commence_time::text AS start, s.frozen_at::text AS "frozenAt", ht.name AS home, at.name AS away,
            s.payload->>'selection' AS selection, (s.payload->>'home_spread')::float8 AS spread,
            (s.payload->>'vegas_total')::float8 AS total, (s.payload->>'home_ml')::integer AS "homeMl",
-           (s.payload->>'away_ml')::integer AS "awayMl",
+           (s.payload->>'away_ml')::integer AS "awayMl", (s.payload->>'to_edge')::float8 AS "toEdge",
            CASE WHEN m.completed THEN m.home_score END AS "homeScore",
            CASE WHEN m.completed THEN m.away_score END AS "awayScore",
            CASE WHEN m.completed THEN COALESCE(m.final_at, m.score_fetched_at)::text END AS "finalObservedAt"
@@ -27,6 +27,7 @@ export async function getCfbStudySelections(date: string) {
       AND s.payload->>'selection' IS NOT NULL AND s.payload->>'home_spread' IS NOT NULL
       AND s.payload->>'home_ml' IS NOT NULL AND s.payload->>'away_ml' IS NOT NULL
       AND (s.trigger <> 'T4_big_fav_over' OR s.payload->>'vegas_total' IS NOT NULL)
+      AND (s.trigger <> 'T7_turnover_margin_fade' OR s.payload->>'to_edge' IS NOT NULL)
       AND (s.trigger <> 'T5_sat_evening_g5_fav_ml' OR (
         extract(isodow FROM m.commence_time AT TIME ZONE 'America/New_York') = 6
         AND (m.commence_time AT TIME ZONE 'America/New_York')::time >= time '17:00'

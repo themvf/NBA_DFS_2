@@ -143,7 +143,7 @@ export default async function DailyMarketStudies({
         </dl> : <p role="status">NFL study data is temporarily unavailable.</p>}
       </Card>
 
-      <Card title="CFB" label="Pattern Watch · T1–T6" link="/cfb/pattern-watch#patterns">
+      <Card title="CFB" label="Pattern Watch · T1–T7" link="/cfb/pattern-watch#patterns">
         {cfb && cfbRecent && cfbThrough ? <>
           <p className="text-xs text-muted-foreground">Last published {easternStamp.format(new Date(cfb.generatedAt))}</p>
           {!cfbRecent.length && <p className="text-muted-foreground">No closing grades published for this date.</p>}

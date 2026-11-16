@@ -201,6 +201,7 @@ const cfbBet = {
   T4_big_fav_over: ["T4", "Total"],
   T5_sat_evening_g5_fav_ml: ["T5", "Outright win"],
   T6_mid_fav_spread: ["T6", "ATS"],
+  T7_turnover_margin_fade: ["T7", "ATS"],
 } as const;
 
 export const cfbStudyTriggers = Object.keys(cfbBet);
@@ -213,6 +214,8 @@ export const matchAdapterStudyIds = [
 export type CfbStudySelection = Omit<MatchGame, "sport"> & {
   trigger: string; frozenAt: string; selection: string; spread: number; total: number | null;
   homeMl: number; awayMl: number; homeScore: number | null; awayScore: number | null;
+  /** T7 only: home minus away season turnover margin per game; the pick is the team with the worse one. */
+  toEdge?: number | null;
 };
 
 export function cfbObservations(rows: CfbStudySelection[]): Observation[] {
@@ -222,7 +225,11 @@ export function cfbObservations(rows: CfbStudySelection[]): Observation[] {
     const [id, type] = market;
     const homeFav = row.spread !== 0 ? row.spread < 0 : row.homeMl < row.awayMl;
     let margin = null;
-    if (row.homeScore !== null && row.awayScore !== null) {
+    if (id === "T7") {
+      if (!row.toEdge) return [];
+      const side = row.toEdge < 0 ? 1 : -1;   // 1: the home team is the pick
+      if (row.homeScore !== null && row.awayScore !== null) margin = side * (row.homeScore - row.awayScore + row.spread);
+    } else if (row.homeScore !== null && row.awayScore !== null) {
       const favorite = (row.homeScore - row.awayScore) * (homeFav ? 1 : -1);
       if (type === "Outright win") margin = favorite;
       else if (type === "ATS") margin = id === "T3" ? Math.abs(row.spread) - favorite : favorite - Math.abs(row.spread);
